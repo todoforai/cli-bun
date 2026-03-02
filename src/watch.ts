@@ -183,7 +183,8 @@ export async function watchTodo(
       generalized_pattern: bi.generalized_pattern,
       cmd: bi.cmd,
     }));
-    const patternHint = allPatterns.length ? ` ${DIM}${allPatterns.join(", ")}${RESET}` : "";
+    const stripPrefix = (p: string) => p.replace(/^todoai_(edge|cloud):/, '');
+    const patternHint = allPatterns.length ? ` ${DIM}${allPatterns.map(stripPrefix).join(", ")}${RESET}` : "";
 
     try {
       const response = await singleChar(`  [Y]es / [n]o / [a]ll / [r]emember${patternHint}? `);
@@ -202,7 +203,7 @@ export async function watchTodo(
               cmd: bi.cmd,
             });
             if (patterns.length > 0) {
-              process.stderr.write(`  ${GREEN}✓ Remembering: ${patterns.join(", ")}${RESET}\n`);
+              process.stderr.write(`  ${GREEN}✓ Remembering: ${patterns.map(stripPrefix).join(", ")}${RESET}\n`);
             }
           }
           sendApproval(ws, bi.blockId, bi.messageId, todoId, decision, patterns);
