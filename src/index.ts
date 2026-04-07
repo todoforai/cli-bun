@@ -9,9 +9,9 @@ import { resolve } from "path";
 import { homedir } from "os";
 
 import { randomTip } from "./tips";
-import { ApiClient } from "todoforai-edge/src/api";
-import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
-import { normalizeApiUrl } from "todoforai-edge/src/config";
+import { ApiClient } from "@todoforai/edge/src/api";
+import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
+import { normalizeApiUrl } from "@todoforai/edge/src/config";
 
 import { DEFAULT_API_URL, getEnv, printUsage, parseCliArgs } from "./args";
 import { readLine, readMultiline, readStdin } from "./input";

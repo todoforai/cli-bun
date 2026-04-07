@@ -1,6 +1,6 @@
 /** Watch todo execution and handle block approvals — port of watch.py */
 
-import { FrontendWebSocket } from "todoforai-edge/src/frontend-ws";
+import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { singleChar } from "./select";
 import { getBlockPatterns } from "@shared/fbe/bashPatterns";
 import { getNewPatterns } from "@shared/fbe/permissionUtils";
