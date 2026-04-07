@@ -17,7 +17,7 @@ import { DEFAULT_API_URL, getEnv, printUsage, parseCliArgs } from "./args";
 import { readLine, readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
-import { BRIGHT_WHITE, CYAN, DIM, GREEN, BRAND, RESET } from "./colors";
+import { BRIGHT_WHITE, CYAN, DIM, GREEN, YELLOW, RED, BOLD, BRAND, RESET } from "./colors";
 import { printLogo } from "./logo";
 import { selectProject, selectAgent, getDisplayName, getItemId } from "./select";
 import { watchTodo } from "./watch";
@@ -27,6 +27,79 @@ import { watchTodo } from "./watch";
 function formatPathWithTilde(path: string): string {
   const home = homedir();
   return path.startsWith(home) ? path.replace(home, "~") : path;
+}
+
+function printFullChat(todo: any, apiUrl: string) {
+  const url = getFrontendUrl(apiUrl, todo.projectId, todo.id);
+  const statusColors: Record<string, string> = {
+    DONE: GREEN, READY: GREEN, READY_CHECKED: GREEN,
+    ERROR: RED, ERROR_CHECKED: RED, CANCELLED: RED, CANCELLED_CHECKED: RED,
+    RUNNING: YELLOW, STOPPING: YELLOW, TODO: CYAN,
+  };
+  const statusColor = statusColors[todo.status] || DIM;
+
+  process.stderr.write(`${BOLD}TODO${RESET} ${todo.id}\n`);
+  process.stderr.write(`${DIM}Status:${RESET} ${statusColor}${todo.status}${RESET}\n`);
+  process.stderr.write(`${DIM}URL:${RESET}    ${CYAN}${url}${RESET}\n`);
+  process.stderr.write(`${DIM}Created:${RESET} ${new Date(todo.createdAt).toLocaleString()}\n`);
+  if (todo.agentSettingsId) process.stderr.write(`${DIM}Agent:${RESET}  ${todo.agentSettingsId}\n`);
+  process.stderr.write("─".repeat(60) + "\n");
+
+  const messages = todo.messages || [];
+  if (!messages.length) {
+    process.stderr.write(`${DIM}(no messages)${RESET}\n`);
+    return;
+  }
+
+  for (const msg of messages) {
+    const isUser = msg.role === "user";
+    const roleLabel = isUser ? `${CYAN}▶ USER${RESET}` : `${GREEN}◀ ASSISTANT${RESET}`;
+    process.stderr.write(`\n${roleLabel} ${DIM}${new Date(msg.createdAt).toLocaleTimeString()}${RESET}\n`);
+
+    // Message content
+    if (msg.content) {
+      const content = msg.content.length > 2000 ? msg.content.slice(0, 2000) + `\n${DIM}... (${msg.content.length} chars total)${RESET}` : msg.content;
+      process.stdout.write(content + "\n");
+    }
+
+    // Blocks (tool calls)
+    for (const block of msg.blocks || []) {
+      const blockStatusColor = block.status === "COMPLETED" ? GREEN : block.status === "ERROR" ? RED : block.status === "DENIED" ? RED : YELLOW;
+      process.stderr.write(`\n  ${YELLOW}[${block.type}]${RESET} ${blockStatusColor}${block.status}${RESET}`);
+      if (block.path) process.stderr.write(` ${DIM}path=${RESET}${block.path}`);
+      if (block.cmd) process.stderr.write(` ${DIM}cmd=${RESET}${block.cmd}`);
+      if (block.name) process.stderr.write(` ${DIM}name=${RESET}${block.name}`);
+      if (block.server_name) process.stderr.write(` ${DIM}server=${RESET}${block.server_name}`);
+      if (block.tool_name) process.stderr.write(` ${DIM}tool=${RESET}${block.tool_name}`);
+      process.stderr.write("\n");
+
+      // Block content (the tool call input / code)
+      if (block.content) {
+        const content = block.content.length > 500 ? block.content.slice(0, 500) + `\n${DIM}... (${block.content.length} chars)${RESET}` : block.content;
+        process.stdout.write(`  ${DIM}│${RESET} ${content.split("\n").join(`\n  ${DIM}│${RESET} `)}\n`);
+      }
+
+      // Block result
+      if (block.result) {
+        const result = block.result.length > 500 ? block.result.slice(0, 500) + `\n${DIM}... (${block.result.length} chars)${RESET}` : block.result;
+        process.stderr.write(`  ${DIM}└─ result:${RESET} ${result.split("\n").join(`\n  ${DIM}│${RESET}  `)}\n`);
+      }
+
+      // Error
+      if (block.error_message) {
+        process.stderr.write(`  ${RED}└─ error: ${block.error_message}${RESET}\n`);
+      }
+      if (block.stacktrace) {
+        const st = block.stacktrace.length > 300 ? block.stacktrace.slice(0, 300) + "..." : block.stacktrace;
+        process.stderr.write(`  ${DIM}${st}${RESET}\n`);
+      }
+    }
+  }
+
+  process.stderr.write("\n" + "─".repeat(60) + "\n");
+  const blockCount = messages.reduce((n: number, m: any) => n + (m.blocks?.length || 0), 0);
+  const errorBlocks = messages.reduce((n: number, m: any) => n + (m.blocks || []).filter((b: any) => b.status === "ERROR" || b.type === "error").length, 0);
+  process.stderr.write(`${DIM}Messages: ${messages.length} | Blocks: ${blockCount} | Errors: ${errorBlocks}${RESET}\n`);
 }
 
 function getFrontendUrl(apiUrl: string, projectId: string, todoId: string): string {
@@ -143,9 +216,6 @@ async function main() {
     return;
   }
 
-  // ── logo ──
-  if (process.stderr.isTTY) printLogo();
-
   // ── resolve API client ──
   // Priority: CLI flag > config > env > default
   const apiUrl = normalizeApiUrl(
@@ -159,6 +229,17 @@ async function main() {
   }
 
   const api = new ApiClient(apiUrl, apiKey);
+
+  // ── inspect mode (read-only, no logo/tips) ──
+  if (args.inspect) {
+    const todoId = args.inspect as string;
+    const todo = await api.getTodo(todoId);
+    printFullChat(todo, apiUrl);
+    return;
+  }
+
+  // ── logo ──
+  if (process.stderr.isTTY) printLogo();
 
   // Validate if --safe
   if (args.safe) {

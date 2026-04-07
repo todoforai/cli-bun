@@ -19,6 +19,7 @@ Usage:
   todoai --path /my/project "Fix bug"  # Explicit workspace path
   todoai -c                            # Resume last todo
   todoai --resume <todo-id>            # Resume specific todo
+  todoai --inspect <todo-id>           # Print full chat log (read-only)
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -26,6 +27,7 @@ Options:
   --agent, -a <name>              Agent name (partial match)
   --api-url <url>                 API URL
   --api-key <key>                 API key
+  --inspect, -i <todo-id>        Print full chat log (read-only, no interactive)
   --resume, -r [todo-id]          Resume existing todo
   --continue, -c                  Continue most recent todo
   --non-interactive, -n           Run to completion and exit without interactive prompt
@@ -52,6 +54,7 @@ export function parseCliArgs() {
       agent: { type: "string", short: "a" },
       "api-url": { type: "string" },
       "api-key": { type: "string" },
+      inspect: { type: "string", short: "i" },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },
