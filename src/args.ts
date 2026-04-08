@@ -20,6 +20,7 @@ Usage:
   todoai -c                            # Resume last todo
   todoai --resume <todo-id>            # Resume specific todo
   todoai --inspect <todo-id>           # Print full chat log (read-only)
+  todoai --template <id> [--input k=v] # Start from a registry template
 
 Options:
   --path <dir>                    Workspace path (default: cwd)
@@ -28,6 +29,8 @@ Options:
   --api-url <url>                 API URL
   --api-key <key>                 API key
   --inspect, -i <todo-id>        Print full chat log (read-only, no interactive)
+  --template, -t <id>            Start from a registry template
+  --input <key=value>            Template input (repeatable)
   --resume, -r [todo-id]          Resume existing todo
   --continue, -c                  Continue most recent todo
   --non-interactive, -n           Run to completion and exit without interactive prompt
@@ -55,6 +58,8 @@ export function parseCliArgs() {
       "api-url": { type: "string" },
       "api-key": { type: "string" },
       inspect: { type: "string", short: "i" },
+      template: { type: "string", short: "t" },
+      input: { type: "string", multiple: true },
       resume: { type: "string", short: "r" },
       continue: { type: "boolean", short: "c", default: false },
       "non-interactive": { type: "boolean", short: "n", default: false },

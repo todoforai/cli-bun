@@ -9,7 +9,7 @@ import { resolve } from "path";
 import { homedir } from "os";
 
 import { randomTip } from "./tips";
-import { ApiClient } from "@todoforai/edge/src/api";
+import { ApiClient, type RegistryTemplate, type RegistryTemplateInput } from "@todoforai/edge/src/api";
 import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { normalizeApiUrl } from "@todoforai/edge/src/config";
 
@@ -240,6 +240,80 @@ async function main() {
 
   // ── logo ──
   if (process.stderr.isTTY) printLogo();
+
+  // ── template mode ──
+  if (args.template) {
+    const templateId = args.template as string;
+    const inputValues: Record<string, string> = {};
+    for (const kv of (args.input as string[] || [])) {
+      const eq = kv.indexOf("=");
+      if (eq > 0) inputValues[kv.slice(0, eq)] = kv.slice(eq + 1);
+    }
+
+    // Fetch template to show info and prompt for missing inputs
+    const template: RegistryTemplate = await api.getRegistryTemplate(templateId);
+    process.stderr.write(`${DIM}Template:${RESET} ${BRAND}${template.todoname}${RESET}\n`);
+    if (template.description) process.stderr.write(`${DIM}${template.description}${RESET}\n`);
+
+    // Prompt for missing inputs (interactive only)
+    const templateInputs: RegistryTemplateInput[] = template.inputs || [];
+    if (templateInputs.length && !args["non-interactive"]) {
+      for (const inp of templateInputs) {
+        const key = inp.label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+$/, "");
+        if (inputValues[key]) continue;
+        const req = inp.required ? ` ${RED}*${RESET}` : "";
+        const hint = inp.placeholder ? ` ${DIM}(${inp.placeholder.split("\n")[0]})${RESET}` : "";
+        const val = await readLine(`${inp.label}${req}${hint}: `);
+        if (val) inputValues[key] = val;
+      }
+    }
+
+    if (Object.keys(inputValues).length) {
+      process.stderr.write(`${DIM}Inputs:${RESET} ${JSON.stringify(inputValues)}\n`);
+    }
+
+    // Resolve project
+    const projects = await api.listProjects();
+    let projectId = args.project as string;
+    if (!projectId) {
+      projectId = cfg.data.default_project_id
+        || projects.find((p: any) => p.project?.isDefault)?.project?.id
+        || projects[0]?.project?.id;
+    }
+    if (!projectId) { process.stderr.write("Error: No project found\n"); process.exit(1); }
+
+    const todo = await api.startFromTemplate(projectId, templateId, { inputValues });
+    const todoId = todo.id;
+    cfg.data.last_todo_id = todoId;
+    cfg.save();
+
+    const frontendUrl = getFrontendUrl(apiUrl, projectId, todoId);
+
+    if (args.json) {
+      console.log(JSON.stringify({ ...todo, frontend_url: frontendUrl }, null, 2));
+    } else {
+      process.stderr.write(`${DIM}TODO:${RESET} ${CYAN}${frontendUrl}${RESET}\n`);
+    }
+
+    if (!args["no-watch"]) {
+      const ws = new FrontendWebSocket(apiUrl, apiKey);
+      await ws.connect();
+      const autoApprove = !!args["dangerously-skip-permissions"];
+      const agent = todo.agentSettings || { id: todo.agentSettingsId };
+
+      await watchTodo(ws, todoId, projectId, {
+        json: !!args.json, autoApprove, agentSettings: agent,
+      });
+
+      if (!args["non-interactive"]) {
+        process.stderr.write(`\n${"─".repeat(40)}\n`);
+        await interactiveLoop(ws, api, todoId, projectId, agent, !!args.json, autoApprove);
+      }
+
+      await ws.close();
+    }
+    return;
+  }
 
   // Validate if --safe
   if (args.safe) {
