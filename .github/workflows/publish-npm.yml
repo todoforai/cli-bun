@@ -24,6 +24,9 @@ jobs:
     - name: Checkout edge
       run: git clone --depth 1 https://x-access-token:${{ secrets.GH_PAT }}@github.com/todoforai/edge.git ../edge
 
+    - name: Checkout shared packages
+      run: git clone --depth 1 https://x-access-token:${{ secrets.GH_PAT }}@github.com/todoforai/packages.git ../packages
+
     - name: Install dependencies
       run: bun install
 
