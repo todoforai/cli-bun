@@ -152,9 +152,9 @@ async function main() {
   );
 
   // ── device login ──
-  if (positionals[0] === "login" && positionals.length === 1) {
-    const api = new ApiClient(apiUrl, ""); // no key needed for init
-    const { code, url, expiresIn } = await api.initDeviceLogin("cli");
+  async function deviceLogin(): Promise<string> {
+    const loginApi = new ApiClient(apiUrl, ""); // no key needed for init
+    const { code, url, expiresIn } = await loginApi.initDeviceLogin("cli");
 
     const userCode = new URL(url).searchParams.get("user_code") || code.slice(-8).toUpperCase();
     process.stderr.write(`\n🔑 Open this URL to authorize:\n`);
@@ -178,12 +178,12 @@ async function main() {
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 3000));
       try {
-        const poll = await api.pollDeviceLogin(code);
+        const poll = await loginApi.pollDeviceLogin(code);
         failures = 0;
         if (poll.status === "complete" && poll.apiKey) {
           cfg.setDefaultApiKey(poll.apiKey);
           process.stderr.write(`${GREEN}✅ Login successful! API key saved.${RESET}\n`);
-          return;
+          return poll.apiKey;
         }
         if (poll.status === "expired") break;
       } catch (e: any) {
@@ -197,13 +197,17 @@ async function main() {
     process.exit(1);
   }
 
+  if (positionals[0] === "login" && positionals.length === 1) {
+    await deviceLogin();
+    return;
+  }
+
   // ── resolve API client ──
   // Priority: CLI flag > config > env > default
-  const apiKey = (args["api-key"] as string) || cfg.data.default_api_key || getEnv("API_KEY") || "";
+  let apiKey = (args["api-key"] as string) || cfg.data.default_api_key || getEnv("API_KEY") || "";
 
   if (!apiKey) {
-    process.stderr.write("Error: No API key. Set via --api-key, TODOFORAI_API_KEY env, or `todoai login`\n");
-    process.exit(1);
+    apiKey = await deviceLogin();
   }
 
   const api = new ApiClient(apiUrl, apiKey);
