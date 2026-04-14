@@ -156,10 +156,10 @@ async function main() {
     const api = new ApiClient(apiUrl, ""); // no key needed for init
     const { code, url, expiresIn } = await api.initDeviceLogin("cli");
 
-    const shortCode = code.slice(-8).toUpperCase();
+    const userCode = new URL(url).searchParams.get("user_code") || code.slice(-8).toUpperCase();
     process.stderr.write(`\n🔑 Open this URL to authorize:\n`);
     process.stderr.write(`${CYAN}${url}${RESET}\n`);
-    process.stderr.write(`Verification code: ${BRIGHT_WHITE}${shortCode}${RESET}\n\n`);
+    process.stderr.write(`Verification code: ${BRIGHT_WHITE}${userCode}${RESET}\n\n`);
 
     // Best-effort open browser
     try {
