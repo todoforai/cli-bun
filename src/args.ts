@@ -13,6 +13,7 @@ export function printUsage() {
 todoai — TODOforAI CLI (Bun)
 
 Usage:
+  todoai login                          # Browser-based device auth
   todoai "prompt text"                  # Prompt as argument
   todoai -n "Quick task"               # Non-interactive (run and exit)
   echo "content" | todoai              # Pipe from stdin

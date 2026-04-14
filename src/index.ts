@@ -146,15 +146,52 @@ async function main() {
     return;
   }
 
-  // ── resolve API client ──
-  // Priority: CLI flag > config > env > default
+  // ── resolve API URL (shared by login + normal flow) ──
   const apiUrl = normalizeApiUrl(
     (args["api-url"] as string) || cfg.data.default_api_url || getEnv("API_URL") || DEFAULT_API_URL,
   );
+
+  // ── device login ──
+  if (positionals[0] === "login") {
+    const api = new ApiClient(apiUrl, ""); // no key needed for init
+    const { code, url, expiresIn } = await api.initDeviceLogin("cli");
+
+    const shortCode = code.slice(-8).toUpperCase();
+    console.log(`\n🔑 Open this URL to authorize:`);
+    console.log(`\x1b[36m${url}\x1b[0m`);
+    console.log(`Verification code: \x1b[1m${shortCode}\x1b[0m\n`);
+
+    // Best-effort open browser
+    try {
+      const { exec } = await import("child_process");
+      const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      exec(`${cmd} "${url}"`);
+    } catch {}
+
+    console.log(`Waiting for approval (expires in ${Math.round(expiresIn / 60)}min)...`);
+    const deadline = Date.now() + expiresIn * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const poll = await api.pollDeviceLogin(code);
+        if (poll.status === "complete" && poll.apiKey) {
+          cfg.setDefaultApiKey(poll.apiKey);
+          console.log("\x1b[32m✅ Login successful! API key saved.\x1b[0m");
+          return;
+        }
+        if (poll.status === "expired") break;
+      } catch {} // transient error — keep polling
+    }
+    console.error("\x1b[31mLogin expired or failed.\x1b[0m");
+    process.exit(1);
+  }
+
+  // ── resolve API client ──
+  // Priority: CLI flag > config > env > default
   const apiKey = (args["api-key"] as string) || cfg.data.default_api_key || getEnv("API_KEY") || "";
 
   if (!apiKey) {
-    process.stderr.write("Error: No API key. Set via --api-key, TODOFORAI_API_KEY env, or --set-default-api-key\n");
+    process.stderr.write("Error: No API key. Set via --api-key, TODOFORAI_API_KEY env, or `todoai login`\n");
     process.exit(1);
   }
 
