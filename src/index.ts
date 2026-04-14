@@ -164,8 +164,12 @@ async function main() {
     // Best-effort open browser
     try {
       const { spawn } = await import("child_process");
-      const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
+      if (process.platform === "win32") {
+        spawn("cmd", ["/c", "start", "", url], { stdio: "ignore", detached: true }).unref();
+      } else {
+        const cmd = process.platform === "darwin" ? "open" : "xdg-open";
+        spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
+      }
     } catch {}
 
     process.stderr.write(`Waiting for approval (expires in ${Math.round(expiresIn / 60)}min)...\n`);
