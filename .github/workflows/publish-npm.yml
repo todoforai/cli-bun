@@ -2,7 +2,7 @@ name: Publish to npm
 
 on:
   push:
-    tags:   [ 'v*' ]
+    branches: [ 'prod' ]
   workflow_dispatch:
 
 jobs:
@@ -33,15 +33,46 @@ jobs:
     - name: Build
       run: bun run build
 
-    - name: Publish to npm
-      run: |
-        node -e "
-          const pkg = require('./package.json');
-          pkg.peerDependencies['@todoforai/edge'] = '>=0.12.0';
-          delete pkg.devDependencies['@todoforai/edge'];
-          delete pkg.scripts.postinstall;
-          require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-        "
-        npm publish --access public --ignore-scripts
+    - name: Resolve version & publish
+      id: publish
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      run: |
+        PACKAGE_NAME=$(jq -r '.name' package.json)
+        LOCAL_VERSION=$(jq -r '.version' package.json)
+        NPM_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
+
+        # Use local if strictly higher than npm (manual major/minor bump); else auto-patch from npm
+        HIGHER=$(printf '%s\n%s\n' "$LOCAL_VERSION" "$NPM_VERSION" | sort -V | tail -1)
+        if [ "$LOCAL_VERSION" = "$HIGHER" ] && [ "$LOCAL_VERSION" != "$NPM_VERSION" ]; then
+          NEW_VERSION="$LOCAL_VERSION"
+        else
+          NEW_VERSION=$(echo "$NPM_VERSION" | awk -F. '{print $1"."$2"."($3+1)}')
+        fi
+
+        # Rewrite package.json: pin version, swap @todoforai/edge dev->peer, drop postinstall
+        node -e "
+          const pkg = require('./package.json');
+          pkg.version = '$NEW_VERSION';
+          pkg.peerDependencies = pkg.peerDependencies || {};
+          pkg.peerDependencies['@todoforai/edge'] = '>=0.12.0';
+          delete (pkg.devDependencies || {})['@todoforai/edge'];
+          delete (pkg.scripts || {}).postinstall;
+          require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
+
+        echo "Publishing $PACKAGE_NAME@$NEW_VERSION (npm had $NPM_VERSION, local was $LOCAL_VERSION)"
+        npm publish --access public --ignore-scripts
+        echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Push release tag (no branch commit)
+      if: success() && steps.publish.outputs.new_version
+      env:
+        NEW_VERSION: ${{ steps.publish.outputs.new_version }}
+        GH_PAT: ${{ secrets.GH_PAT }}
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+        git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+        git push origin "v$NEW_VERSION"
