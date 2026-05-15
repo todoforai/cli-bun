@@ -1,8 +1,10 @@
 /** CLI argument parsing and usage */
 
 import { parseArgs } from "util";
+import pkg from "../package.json" with { type: "json" };
 
 export const DEFAULT_API_URL = "https://api.todofor.ai";
+export const VERSION: string = pkg.version;
 
 export function getEnv(name: string): string {
   return process.env[`TODOFORAI_${name}`] || process.env[`TODO4AI_${name}`] || "";
@@ -47,6 +49,7 @@ Options:
   --show-config                   Show config
   --set-default-api-url           Set default API URL
   --reset-config                  Reset config file
+  --version, -v                   Print version and exit
   --help, -h                      Show this help
 `);
 }
@@ -79,6 +82,7 @@ export function parseCliArgs() {
       "reset-config": { type: "boolean", default: false },
       "config-path": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
+      version: { type: "boolean", short: "v", default: false },
     },
     allowPositionals: true,
     strict: false,

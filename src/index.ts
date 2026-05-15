@@ -13,7 +13,7 @@ import { ApiClient, type RegistryTemplate, type RegistryTemplateInput } from "@t
 import { FrontendWebSocket } from "@todoforai/edge/src/frontend-ws";
 import { normalizeApiUrl } from "@todoforai/edge/src/config";
 
-import { DEFAULT_API_URL, getEnv, printUsage, parseCliArgs } from "./args";
+import { DEFAULT_API_URL, VERSION, getEnv, printUsage, parseCliArgs } from "./args";
 import { readLine, readMultiline, readStdin } from "./input";
 import { getAgentWorkspacePaths, autoCreateAgent } from "./agent";
 import { ConfigStore } from "./config";
@@ -121,6 +121,7 @@ async function main() {
 
   const { values: args, positionals } = parseCliArgs();
 
+  if (args.version) { console.log(VERSION); process.exit(0); }
   if (args.help) { printUsage(); process.exit(0); }
 
   const cfg = new ConfigStore(args["config-path"] as string);
