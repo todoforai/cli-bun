@@ -145,12 +145,11 @@ async function main() {
     else console.log("No configuration file to reset");
     return;
   }
-  if (args["set-default-api-url"]) { cfg.setDefaultApiUrl(args["set-default-api-url"] as string); console.log(`Default API URL set to: ${args["set-default-api-url"]}`); return; }
-
   // ── resolve API URL (shared by login + normal flow) ──
   const apiUrl = normalizeApiUrl(
-    (args["api-url"] as string) || cfg.data.default_api_url || getEnv("API_URL") || DEFAULT_API_URL,
+    (args["api-url"] as string) || getEnv("API_URL") || DEFAULT_API_URL,
   );
+  const cfgScope = cfg.scope(apiUrl);
 
   // ── device login ──
   async function deviceLogin(): Promise<string> {
@@ -265,7 +264,7 @@ async function main() {
     const projects = await api.listProjects();
     let projectId = args.project as string;
     if (!projectId) {
-      projectId = cfg.data.default_project_id
+      projectId = cfgScope.data.default_project_id
         || projects.find((p: any) => p.project?.isDefault)?.project?.id
         || projects[0]?.project?.id;
     }
@@ -273,8 +272,7 @@ async function main() {
 
     const todo = await api.startFromTemplate(projectId, templateId, { inputValues });
     const todoId = todo.id;
-    cfg.data.last_todo_id = todoId;
-    cfg.save();
+    cfgScope.setLastTodoId(todoId);
 
     const frontendUrl = getFrontendUrl(apiUrl, projectId, todoId);
 
@@ -318,7 +316,7 @@ async function main() {
   // ── resume mode ──
   if (args.resume || args.continue) {
     if (!args["no-edge"]) ensureEdgeRunning(apiUrl, apiKey);
-    const todoId = (args.resume as string) || cfg.data.last_todo_id;
+    const todoId = (args.resume as string) || cfgScope.data.last_todo_id;
     if (!todoId) { process.stderr.write("Error: No recent todo found\n"); process.exit(1); }
 
     const todo = await api.getTodo(todoId);
@@ -353,7 +351,7 @@ async function main() {
       process.stderr.write(`Error: Agent '${args.agent}' not found\n`);
       process.exit(1);
     }
-    cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
+    cfgScope.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
   } else {
     // Resolve from --path or cwd
     const pathArg = (args.path as string) || ".";
@@ -361,13 +359,13 @@ async function main() {
     const matches = await api.listAgentSettings({ workspacePath: resolved });
     if (matches.length > 0) {
       preMatchedAgent = matches[0];
-      cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
+      cfgScope.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
     } else if (args.path) {
       // Explicit --path with no match — auto-create
       process.stderr.write(`No agent found for '${formatPathWithTilde(resolved)}', creating one...\n`);
       try {
         preMatchedAgent = await autoCreateAgent(api, resolved);
-        cfg.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
+        cfgScope.setDefaultAgent(getDisplayName(preMatchedAgent), preMatchedAgent);
       } catch (e: any) {
         process.stderr.write(`Error: Failed to auto-create agent: ${e.message}\n`);
         process.exit(1);
@@ -401,8 +399,8 @@ async function main() {
   }
 
   // ── select project + agent ──
-  const hasProject = args.project || cfg.data.default_project_id;
-  const storedAgent = cfg.data.default_agent_settings;
+  const hasProject = args.project || cfgScope.data.default_project_id;
+  const storedAgent = cfgScope.data.default_agent_settings;
   const hasAgent = preMatchedAgent || (storedAgent?.id && !args.agent);
 
   let projects: any[] | null = null;
@@ -421,14 +419,14 @@ async function main() {
       const match = projects.find((p: any) => getItemId(p) === projectId);
       if (match) projectName = getDisplayName(match);
     }
-  } else if (cfg.data.default_project_id && !projects) {
-    projectId = cfg.data.default_project_id;
-    projectName = cfg.data.default_project_name || projectId;
+  } else if (cfgScope.data.default_project_id && !projects) {
+    projectId = cfgScope.data.default_project_id;
+    projectName = cfgScope.data.default_project_name || projectId;
   } else {
     const sel = await selectProject(
       projects!,
-      cfg.data.default_project_id,
-      (id, name) => cfg.setDefaultProject(id, name),
+      cfgScope.data.default_project_id,
+      (id, name) => cfgScope.setDefaultProject(id, name),
     );
     projectId = sel.id;
     projectName = sel.name;
@@ -443,8 +441,8 @@ async function main() {
   } else {
     agent = await selectAgent(
       agents!,
-      cfg.data.default_agent_name,
-      (name, settings) => cfg.setDefaultAgent(name, settings),
+      cfgScope.data.default_agent_name,
+      (name, settings) => cfgScope.setDefaultAgent(name, settings),
     );
   }
 
@@ -461,8 +459,7 @@ async function main() {
   cfg.addToHistory(content);
   const todo = await api.addMessage(projectId, content, agent);
   const actualTodoId = todo.id || crypto.randomUUID();
-  cfg.data.last_todo_id = actualTodoId;
-  cfg.save();
+  cfgScope.setLastTodoId(actualTodoId);
 
   const frontendUrl = getFrontendUrl(apiUrl, projectId, actualTodoId);
 

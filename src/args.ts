@@ -47,7 +47,6 @@ Options:
   --safe                          Validate API key upfront
   --debug, -d                     Debug output
   --show-config                   Show config
-  --set-default-api-url           Set default API URL
   --reset-config                  Reset config file
   --version, -v                   Print version and exit
   --help, -h                      Show this help
@@ -78,7 +77,6 @@ export function parseCliArgs() {
       safe: { type: "boolean", default: false },
       debug: { type: "boolean", short: "d", default: false },
       "show-config": { type: "boolean", default: false },
-      "set-default-api-url": { type: "string" },
       "reset-config": { type: "boolean", default: false },
       "config-path": { type: "string" },
       help: { type: "boolean", short: "h", default: false },

@@ -17,32 +17,61 @@ function getConfigDir(): string {
   return join(xdg, "todoai-cli");
 }
 
-export interface ConfigData {
+/** Per-apiUrl state (project + agent + last todo). */
+export interface ApiUrlScope {
   default_project_id: string | null;
   default_project_name: string | null;
   default_agent_name: string | null;
   default_agent_settings: any | null;
   default_agent_settings_updated_at: string | null;
-  default_api_url: string | null;
   recent_projects: { id: string; name: string }[];
   recent_agents: string[];
   last_todo_id: string | null;
-  input_history: string[];
 }
 
-function defaultConfig(): ConfigData {
+export interface ConfigData {
+  input_history: string[];
+  per_api_url: Record<string, ApiUrlScope>;
+}
+
+function defaultScope(): ApiUrlScope {
   return {
     default_project_id: null,
     default_project_name: null,
     default_agent_name: null,
     default_agent_settings: null,
     default_agent_settings_updated_at: null,
-    default_api_url: null,
     recent_projects: [],
     recent_agents: [],
     last_todo_id: null,
-    input_history: [],
   };
+}
+
+function defaultConfig(): ConfigData {
+  return {
+    input_history: [],
+    per_api_url: {},
+  };
+}
+
+/** Migrate legacy top-level fields into per_api_url[<default_api_url or "https://api.todofor.ai">]. */
+function migrate(raw: any): ConfigData {
+  const cfg: ConfigData = { ...defaultConfig(), ...raw, per_api_url: raw.per_api_url || {} };
+  const legacyKeys = [
+    "default_project_id", "default_project_name",
+    "default_agent_name", "default_agent_settings", "default_agent_settings_updated_at",
+    "recent_projects", "recent_agents", "last_todo_id",
+  ] as const;
+  const hasLegacy = legacyKeys.some((k) => raw[k] != null);
+  if (hasLegacy) {
+    const url = raw.default_api_url || "https://api.todofor.ai";
+    const scope: ApiUrlScope = { ...defaultScope(), ...(cfg.per_api_url[url] || {}) };
+    for (const k of legacyKeys) if (raw[k] != null) (scope as any)[k] = raw[k];
+    cfg.per_api_url[url] = scope;
+  }
+  for (const k of legacyKeys) delete (cfg as any)[k];
+  delete (cfg as any).default_api_url;
+  return cfg;
 }
 
 export class ConfigStore {
@@ -64,7 +93,14 @@ export class ConfigStore {
     try {
       const raw = JSON.parse(readFileSync(this.path, "utf-8"));
       delete raw.default_api_key; // legacy field — credentials live in ~/.todoforai/credentials.json
-      return { ...defaultConfig(), ...raw };
+      const cfg = migrate(raw);
+      // Persist migration immediately so legacy top-level fields disappear from disk.
+      const needsMigration = raw.per_api_url == null;
+      if (needsMigration) {
+        this.data = cfg;
+        this.save();
+      }
+      return cfg;
     } catch {
       return defaultConfig();
     }
@@ -77,28 +113,10 @@ export class ConfigStore {
     } catch {}
   }
 
-  setDefaultProject(id: string, name?: string): void {
-    this.data.default_project_id = id;
-    this.data.default_project_name = name || id;
-    const recent = this.data.recent_projects.filter((p) => p.id !== id);
-    recent.unshift({ id, name: name || id });
-    this.data.recent_projects = recent.slice(0, 10);
-    this.save();
-  }
-
-  setDefaultAgent(name: string, settings?: any): void {
-    this.data.default_agent_name = name;
-    this.data.default_agent_settings = settings || null;
-    this.data.default_agent_settings_updated_at = new Date().toISOString();
-    const recent = this.data.recent_agents.filter((a) => a !== name);
-    recent.unshift(name);
-    this.data.recent_agents = recent.slice(0, 10);
-    this.save();
-  }
-
-  setDefaultApiUrl(url: string): void {
-    this.data.default_api_url = url;
-    this.save();
+  /** Get (creating if missing) the per-apiUrl scope. */
+  scope(apiUrl: string): ScopedConfig {
+    if (!this.data.per_api_url[apiUrl]) this.data.per_api_url[apiUrl] = defaultScope();
+    return new ScopedConfig(this, apiUrl);
   }
 
   addToHistory(input: string): void {
@@ -116,5 +134,36 @@ export class ConfigStore {
 
   getHistory(): string[] {
     return this.data.input_history || [];
+  }
+}
+
+/** Per-apiUrl view: read/write project & agent state for a specific API URL. */
+export class ScopedConfig {
+  constructor(private store: ConfigStore, private apiUrl: string) {}
+
+  get data(): ApiUrlScope {
+    return this.store.data.per_api_url[this.apiUrl];
+  }
+
+  setDefaultProject(id: string, name?: string): void {
+    const s = this.data;
+    s.default_project_id = id;
+    s.default_project_name = name || id;
+    s.recent_projects = [{ id, name: name || id }, ...s.recent_projects.filter((p) => p.id !== id)].slice(0, 10);
+    this.store.save();
+  }
+
+  setDefaultAgent(name: string, settings?: any): void {
+    const s = this.data;
+    s.default_agent_name = name;
+    s.default_agent_settings = settings || null;
+    s.default_agent_settings_updated_at = new Date().toISOString();
+    s.recent_agents = [name, ...s.recent_agents.filter((a) => a !== name)].slice(0, 10);
+    this.store.save();
+  }
+
+  setLastTodoId(id: string): void {
+    this.data.last_todo_id = id;
+    this.store.save();
   }
 }

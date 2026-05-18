@@ -17,13 +17,11 @@ todoai                # prompts device login if no key found
 todoai login          # explicit login
 ```
 
-Optional manual config:
+API URL resolution: `--api-url` flag → `TODOFORAI_API_URL` env → `https://api.todofor.ai`.
 
-```bash
-todoai --set-default-api-url http://localhost:4000   # or https://api.todofor.ai
-```
+Auth resolution: `--api-key` flag → `TODOFORAI_API_KEY` env → shared credentials (`~/.todoforai/credentials.json`) → device login.
 
-Auth resolution order: `--api-key` flag → `TODOFORAI_API_KEY` env → shared credentials (`~/.todoforai/credentials.json`) → device login.
+Project, agent, and last-todo state are stored **per API URL** under `per_api_url[<url>]` in the config — switching between e.g. `https://api.todofor.ai` and `http://localhost:4000` keeps each environment's defaults isolated. Legacy top-level fields are auto-migrated on first run.
 
 ## Edge daemon
 
@@ -89,7 +87,6 @@ todoai --resume <todo-id>     # resume specific todo
 --safe                          Validate API key upfront
 --debug, -d                     Debug output
 --show-config                   Show config
---set-default-api-url           Set default API URL
 --reset-config                  Reset config file
 --help, -h                      Show this help
 ```
